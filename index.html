@@ -1,0 +1,414 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#14161a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>育児記録（夫婦共有）</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍼</text></svg>">
+<script>
+/* ============================================================
+   設定：保存先（Supabase）は組み込み済みです。このまま使えます
+   （取得方法は README-手順.md の手順4を見てください）
+   ============================================================ */
+const SUPABASE_URL = "https://ymkksntfiugdnrtqjnha.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_r1gNTtHOq8-puF_n5JOLKg_YSJ14o_K";
+</script>
+<style>
+  :root{
+    --bg:#14161a; --panel:#1e2126; --panel2:#262a31; --line:#33373f;
+    --text:#e9e6dd; --sub:#a7a294; --accent:#7d9bb8;
+    --danger:#b87d7d;
+  }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; padding:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Noto Sans JP",sans-serif; }
+  body{ max-width:560px; margin:0 auto; padding:14px 14px 40px; }
+  button{ font-family:inherit; touch-action:manipulation; cursor:pointer; }
+
+  /* ---------- 共通 ---------- */
+  .screen{ display:none; }
+  .screen.active{ display:block; }
+  .card{ background:var(--panel); border:1px solid var(--line); border-radius:18px; padding:22px 18px; margin-top:26px; }
+  .card h1{ font-size:22px; margin:0 0 10px; }
+  .card p{ color:var(--sub); line-height:1.7; font-size:15px; margin:6px 0; }
+  .big-input{ width:100%; font-size:20px; padding:14px; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); margin:14px 0 12px; }
+  .primary-btn{ width:100%; font-size:19px; font-weight:700; padding:15px; border:none; border-radius:12px;
+    background:var(--accent); color:#10151c; }
+  .warn{ color:#d3a86a; }
+
+  /* ---------- メイン画面 ---------- */
+  header{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:2px 2px 0; }
+  header .title{ font-size:20px; font-weight:700; }
+  header .code-area{ font-size:12px; color:var(--sub); text-align:right; }
+  header .code-area button{ background:none; border:none; color:var(--accent); font-size:12px; text-decoration:underline; padding:2px 0 0; }
+  #status{ font-size:12px; color:var(--sub); min-height:16px; padding:4px 2px 8px; }
+  #status.error{ color:var(--danger); }
+
+  .btn-grid{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .log-btn{ border:1px solid var(--line); border-radius:18px; padding:16px 10px 13px; min-height:104px;
+    color:var(--text); text-align:center; transition:transform .05s ease, filter .1s ease; }
+  .log-btn:active{ transform:scale(.97); filter:brightness(1.25); }
+  .log-btn .label{ font-size:27px; font-weight:800; letter-spacing:.04em; display:block; }
+  .log-btn .icon{ font-size:22px; display:block; margin-bottom:2px; }
+  .log-btn .last{ font-size:12px; color:rgba(233,230,221,.75); display:block; margin-top:6px; min-height:15px; }
+  .log-btn.wide{ grid-column:1 / -1; min-height:88px; }
+  .c-sleep { background:#33415e; } .c-wake  { background:#5e4f33; }
+  .c-diaper{ background:#38534a; } .c-poop  { background:#574434; }
+  .c-breast{ background:#5e3a4c; } .c-milk  { background:#3c4f66; }
+  .c-bath  { background:#31505e; }
+
+  /* ---------- みるくパネル ---------- */
+  #milk-panel{ display:none; background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:16px; margin-top:10px; }
+  #milk-panel.open{ display:block; }
+  #milk-panel .mp-title{ font-size:17px; font-weight:700; margin-bottom:10px; }
+  .ml-grid{ display:grid; grid-template-columns:repeat(5,1fr); gap:8px; }
+  .ml-btn{ font-size:16px; font-weight:700; padding:12px 0; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); }
+  .ml-btn:active{ filter:brightness(1.3); }
+  .ml-custom{ display:flex; gap:8px; margin-top:10px; }
+  .ml-custom input{ flex:1; font-size:18px; padding:11px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); min-width:0; }
+  .ml-custom button{ font-size:16px; font-weight:700; padding:0 18px; border:none; border-radius:10px;
+    background:var(--accent); color:#10151c; }
+  .mp-sub{ display:flex; gap:8px; margin-top:10px; }
+  .mp-sub button{ flex:1; font-size:15px; padding:11px 0; border-radius:10px; border:1px solid var(--line);
+    background:transparent; color:var(--sub); }
+
+  /* ---------- 記録一覧 ---------- */
+  .day-block{ margin-top:22px; }
+  .day-head{ display:flex; align-items:baseline; justify-content:space-between; gap:8px;
+    border-bottom:1px solid var(--line); padding-bottom:6px; margin-bottom:4px; }
+  .day-head .date{ font-size:16px; font-weight:700; }
+  .day-head .counts{ font-size:12px; color:var(--sub); text-align:right; }
+  .row{ display:flex; align-items:center; gap:10px; padding:9px 2px; border-bottom:1px solid #22252b; }
+  .row .time{ font-size:16px; font-weight:700; width:52px; flex:none; }
+  .row .what{ font-size:16px; flex:1; }
+  .row .what .ml{ color:var(--sub); font-size:14px; margin-left:6px; }
+  .row .del{ flex:none; background:none; border:1px solid var(--line); color:var(--sub);
+    width:34px; height:34px; border-radius:50%; font-size:15px; line-height:1; }
+  .empty{ color:var(--sub); text-align:center; padding:28px 0 8px; font-size:15px; }
+</style>
+</head>
+<body>
+
+<!-- 設定不足の画面 -->
+<section id="setup-screen" class="screen">
+  <div class="card">
+    <h1>設定が必要です</h1>
+    <p>保存先への接続を確認できませんでした。</p>
+    <p>通信のよい場所で、このページを開き直してください。</p>
+  </div>
+</section>
+
+<!-- 合言葉の画面 -->
+<section id="code-screen" class="screen">
+  <div class="card">
+    <h1>家族の合言葉</h1>
+    <p>夫婦で決めた合言葉を入れてください。<br>
+       <b>同じ合言葉を入れたスマホ同士</b>で、記録が共有されます。</p>
+    <p class="warn">合言葉はカギの代わりです。他の人に知られない言葉にしてください（大文字・小文字も一致が必要です）。</p>
+    <input id="code-input" class="big-input" type="text" placeholder="例：jinpei2026" autocomplete="off">
+    <button id="code-save" class="primary-btn">はじめる</button>
+  </div>
+</section>
+
+<!-- メイン画面 -->
+<section id="main-screen" class="screen">
+  <header>
+    <div class="title">🍼 育児記録</div>
+    <div class="code-area">
+      合言葉：<span id="code-view"></span><br>
+      <button id="code-change" type="button">合言葉を変更</button>
+    </div>
+  </header>
+  <div id="status"></div>
+
+  <div class="btn-grid" id="btn-grid"></div>
+
+  <!-- みるく量パネル -->
+  <div id="milk-panel">
+    <div class="mp-title">🍼 みるく　何mlですか？</div>
+    <div class="ml-grid" id="ml-grid"></div>
+    <div class="ml-custom">
+      <input id="ml-input" type="number" inputmode="numeric" placeholder="数字を入力（ml）" min="0" max="2000">
+      <button id="ml-ok" type="button">記録</button>
+    </div>
+    <div class="mp-sub">
+      <button id="ml-none" type="button">量なしで記録</button>
+      <button id="ml-cancel" type="button">やめる</button>
+    </div>
+  </div>
+
+  <div id="list"></div>
+</section>
+
+<script>
+/* ============================================================
+   記録の種類（ボタンは7つだけ）
+   ============================================================ */
+const TYPES = [
+  { key:"sleep",  label:"ねる",   icon:"🌙", cls:"c-sleep"  },
+  { key:"wake",   label:"おきる", icon:"🌞", cls:"c-wake"   },
+  { key:"diaper", label:"おむつ", icon:"👶", cls:"c-diaper" },
+  { key:"poop",   label:"うんち", icon:"💩", cls:"c-poop"   },
+  { key:"breast", label:"授乳",   icon:"🤱", cls:"c-breast" },
+  { key:"milk",   label:"みるく", icon:"🍼", cls:"c-milk"   },
+  { key:"bath",   label:"おふろ", icon:"🛁", cls:"c-bath", wide:true },
+];
+const TYPE_MAP = Object.fromEntries(TYPES.map(t => [t.key, t]));
+const ML_PRESETS = [30, 40, 50, 60, 70, 80, 90, 100, 120, 150];
+const LS_KEY = "ikuji_family_code";
+const POLL_MS = 30000;
+
+let familyCode = localStorage.getItem(LS_KEY) || "";
+let logs = [];            // 新しい順
+let lastTimes = {};       // type -> Date（最新）
+let configured = true;
+
+/* ---------- 画面切り替え ---------- */
+const $ = id => document.getElementById(id);
+function show(id){
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $(id).classList.add("active");
+}
+
+/* ---------- 保存先（Supabase REST） ---------- */
+async function api(path, options = {}){
+  const res = await fetch(SUPABASE_URL + "/rest/v1/" + path, {
+    ...options,
+    headers: {
+      "apikey": SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + SUPABASE_ANON_KEY,
+      "Content-Type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  if (!res.ok) throw new Error("API error: " + res.status);
+  if (res.status === 204) return null;
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+async function fetchLogs(){
+  const q = "logs?select=id,type,ml,created_at"
+    + "&family_code=eq." + encodeURIComponent(familyCode)
+    + "&order=created_at.desc&limit=500";
+  logs = await api(q);
+  computeLastTimes();
+  render();
+}
+async function addLog(type, ml){
+  await api("logs", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ family_code: familyCode, type: type, ml: ml })
+  });
+  await fetchLogs();
+}
+async function deleteLog(id){
+  const q = "logs?id=eq." + encodeURIComponent(id)
+    + "&family_code=eq." + encodeURIComponent(familyCode);
+  await api(q, { method: "DELETE" });
+  await fetchLogs();
+}
+
+function computeLastTimes(){
+  lastTimes = {};
+  for (const row of logs){
+    if (!lastTimes[row.type]) lastTimes[row.type] = new Date(row.created_at);
+  }
+}
+
+/* ---------- 表示まわり ---------- */
+function setStatus(msg, isError){
+  const el = $("status");
+  el.textContent = msg || "";
+  el.className = isError ? "error" : "";
+}
+function timeHM(d){
+  return String(d.getHours()).padStart(2,"0") + ":" + String(d.getMinutes()).padStart(2,"0");
+}
+function dateKey(d){
+  return d.getFullYear() + "-" + (d.getMonth()+1) + "-" + d.getDate();
+}
+function elapsedStr(d){
+  const min = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (min < 1) return "たった今";
+  if (min < 60) return min + "分前";
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h < 24) return m ? h + "時間" + m + "分前" : h + "時間前";
+  return Math.floor(h / 24) + "日前";
+}
+function lastLabel(type){
+  const d = lastTimes[type];
+  if (!d) return "まだ記録なし";
+  const today = dateKey(new Date()) === dateKey(d);
+  const yest = dateKey(new Date(Date.now() - 86400000)) === dateKey(d);
+  const when = today ? timeHM(d) : (yest ? "昨日 " + timeHM(d) : (d.getMonth()+1) + "/" + d.getDate() + " " + timeHM(d));
+  return "前回 " + when + " ・ " + elapsedStr(d);
+}
+
+function buildButtons(){
+  const grid = $("btn-grid");
+  grid.innerHTML = "";
+  for (const t of TYPES){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "log-btn " + t.cls + (t.wide ? " wide" : "");
+    b.innerHTML = '<span class="icon">' + t.icon + '</span>'
+      + '<span class="label">' + t.label + '</span>'
+      + '<span class="last" data-last="' + t.key + '"></span>';
+    b.addEventListener("click", () => onTypeTap(t.key));
+    grid.appendChild(b);
+  }
+  const mlGrid = $("ml-grid");
+  mlGrid.innerHTML = "";
+  for (const ml of ML_PRESETS){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ml-btn";
+    b.textContent = ml + "ml";
+    b.addEventListener("click", () => { closeMilkPanel(); record("milk", ml); });
+    mlGrid.appendChild(b);
+  }
+}
+
+function renderLastLabels(){
+  document.querySelectorAll("[data-last]").forEach(el => {
+    el.textContent = lastLabel(el.dataset.last);
+  });
+}
+
+function renderList(){
+  const wrap = $("list");
+  if (!logs.length){
+    wrap.innerHTML = '<div class="empty">まだ記録がありません。<br>上のボタンを押すだけで記録できます。</div>';
+    return;
+  }
+  // 日ごとにまとめる
+  const days = new Map();
+  for (const row of logs){
+    const d = new Date(row.created_at);
+    const k = dateKey(d);
+    if (!days.has(k)) days.set(k, { date: d, rows: [], counts: {} });
+    const g = days.get(k);
+    g.rows.push(row);
+    g.counts[row.type] = (g.counts[row.type] || 0) + 1;
+  }
+  const wd = ["日","月","火","水","木","金","土"];
+  let html = "";
+  for (const g of days.values()){
+    const d = g.date;
+    const counts = TYPES.filter(t => g.counts[t.key])
+      .map(t => t.label + " " + g.counts[t.key]).join(" ・ ");
+    html += '<div class="day-block"><div class="day-head">'
+      + '<span class="date">' + (d.getMonth()+1) + "月" + d.getDate() + "日（" + wd[d.getDay()] + "）</span>"
+      + '<span class="counts">' + counts + "</span></div>";
+    for (const row of g.rows){
+      const t = TYPE_MAP[row.type] || { label: row.type, icon: "" };
+      html += '<div class="row"><span class="time">' + timeHM(new Date(row.created_at)) + "</span>"
+        + '<span class="what">' + t.icon + " " + t.label
+        + (row.ml != null ? '<span class="ml">' + row.ml + "ml</span>" : "")
+        + '</span><button type="button" class="del" data-del="' + row.id + '" aria-label="削除">×</button></div>';
+    }
+    html += "</div>";
+  }
+  wrap.innerHTML = html;
+  wrap.querySelectorAll("[data-del]").forEach(b => {
+    b.addEventListener("click", async () => {
+      try {
+        await deleteLog(b.dataset.del);
+        setStatus("削除しました");
+      } catch(e){
+        setStatus("削除できませんでした。通信を確認してもう一度押してください。", true);
+      }
+    });
+  });
+}
+
+function render(){
+  renderLastLabels();
+  renderList();
+}
+
+/* ---------- 記録アクション ---------- */
+async function record(type, ml){
+  try {
+    await addLog(type, ml);
+    const now = new Date();
+    setStatus("記録しました（" + timeHM(now) + "）");
+  } catch(e){
+    setStatus("記録できませんでした。通信を確認してもう一度押してください。", true);
+  }
+}
+function onTypeTap(key){
+  if (key === "milk"){ openMilkPanel(); return; }
+  closeMilkPanel();
+  record(key, null);
+}
+function openMilkPanel(){
+  $("milk-panel").classList.add("open");
+  $("milk-panel").scrollIntoView({ behavior:"smooth", block:"nearest" });
+}
+function closeMilkPanel(){ $("milk-panel").classList.remove("open"); }
+
+$("ml-ok").addEventListener("click", () => {
+  const v = parseInt($("ml-input").value, 10);
+  if (!Number.isFinite(v) || v < 0){ setStatus("ミルクの量を数字で入れてください。", true); return; }
+  $("ml-input").value = "";
+  closeMilkPanel();
+  record("milk", v);
+});
+$("ml-none").addEventListener("click", () => { closeMilkPanel(); record("milk", null); });
+$("ml-cancel").addEventListener("click", closeMilkPanel);
+
+/* ---------- 合言葉 ---------- */
+$("code-save").addEventListener("click", () => {
+  const v = $("code-input").value.trim();
+  if (!v){ setStatus(""); $("code-input").focus(); return; }
+  familyCode = v;
+  localStorage.setItem(LS_KEY, v);
+  startMain();
+});
+$("code-input").addEventListener("keydown", e => { if (e.key === "Enter") $("code-save").click(); });
+$("code-change").addEventListener("click", () => {
+  $("code-input").value = familyCode;
+  show("code-screen");
+});
+
+/* ---------- 同期（30秒ポーリング＋画面に戻ったとき） ---------- */
+async function refreshQuietly(){
+  try { await fetchLogs(); } catch(e){ /* ポーリング失敗は静かに次回へ */ }
+}
+setInterval(() => {
+  if ($("main-screen").classList.contains("active") && !document.hidden) refreshQuietly();
+}, POLL_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && $("main-screen").classList.contains("active")) refreshQuietly();
+});
+// 経過時間の表示だけを30秒ごとに進める
+setInterval(() => {
+  if ($("main-screen").classList.contains("active")) renderLastLabels();
+}, 30000);
+
+/* ---------- 起動 ---------- */
+function startMain(){
+  $("code-view").textContent = familyCode;
+  show("main-screen");
+  fetchLogs().catch(() => setStatus("読み込めませんでした。通信を確認して、開き直してください。", true));
+}
+buildButtons();
+if (!configured){
+  show("setup-screen");
+} else if (!familyCode){
+  show("code-screen");
+} else {
+  startMain();
+}
+</script>
+</body>
+</html>
