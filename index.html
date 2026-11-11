@@ -91,6 +91,28 @@ const SUPABASE_ANON_KEY = "sb_publishable_r1gNTtHOq8-puF_n5JOLKg_YSJ14o_K";
   .row .what .ml{ color:var(--sub); font-size:14px; margin-left:6px; }
   .row .del{ flex:none; background:none; border:1px solid var(--line); color:var(--sub);
     width:34px; height:34px; border-radius:50%; font-size:15px; line-height:1; }
+
+  /* ---------- あとから追加 ---------- */
+  #later-open{ width:100%; margin-top:10px; font-size:16px; font-weight:700; padding:14px;
+    border-radius:14px; border:1px dashed var(--line); background:transparent; color:var(--sub); }
+  #later-open:active{ filter:brightness(1.3); }
+  #later-panel{ display:none; background:var(--panel); border:1px solid var(--line); border-radius:18px;
+    padding:16px; margin-top:10px; }
+  #later-panel.open{ display:block; }
+  #later-panel .lp-title{ font-size:17px; font-weight:700; margin-bottom:10px; }
+  .type-grid{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:12px; }
+  .type-chip{ font-size:15px; font-weight:700; padding:11px 0; border-radius:12px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--sub); }
+  .type-chip.sel{ color:var(--text); border-color:var(--accent); background:#2c3542; }
+  #later-time{ width:100%; font-size:17px; padding:12px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel2); color:var(--text); color-scheme:dark; }
+  #later-ml{ display:none; margin-top:12px; }
+  #later-ml.open{ display:block; }
+  .lp-actions{ display:flex; gap:8px; margin-top:14px; }
+  .lp-actions .save{ flex:2; font-size:17px; font-weight:700; padding:13px 0; border:none; border-radius:10px;
+    background:var(--accent); color:#10151c; }
+  .lp-actions .cancel{ flex:1; font-size:15px; padding:13px 0; border-radius:10px; border:1px solid var(--line);
+    background:transparent; color:var(--sub); }
   .empty{ color:var(--sub); text-align:center; padding:28px 0 8px; font-size:15px; }
 </style>
 </head>
@@ -141,6 +163,29 @@ const SUPABASE_ANON_KEY = "sb_publishable_r1gNTtHOq8-puF_n5JOLKg_YSJ14o_K";
     <div class="mp-sub">
       <button id="ml-none" type="button">量なしで記録</button>
       <button id="ml-cancel" type="button">やめる</button>
+    </div>
+  </div>
+
+
+  <button id="later-open" type="button">＋ あとから追加（つけ忘れたとき）</button>
+
+  <!-- あとから追加パネル -->
+  <div id="later-panel">
+    <div class="lp-title">🕐 あとから追加</div>
+    <div class="type-grid" id="later-types"></div>
+    <input id="later-time" type="datetime-local">
+    <div id="later-ml">
+      <div class="ml-grid" id="later-ml-grid"></div>
+      <div class="ml-custom">
+        <input id="later-ml-input" type="number" inputmode="numeric" placeholder="数字を入力（ml）" min="0" max="2000">
+      </div>
+      <div class="mp-sub">
+        <button id="later-ml-none" type="button">量なしにする</button>
+      </div>
+    </div>
+    <div class="lp-actions">
+      <button id="later-save" class="save" type="button">追加する</button>
+      <button id="later-cancel" class="cancel" type="button">やめる</button>
     </div>
   </div>
 
@@ -206,6 +251,14 @@ async function addLog(type, ml){
     method: "POST",
     headers: { "Prefer": "return=representation" },
     body: JSON.stringify({ family_code: familyCode, type: type, ml: ml })
+  });
+  await fetchLogs();
+}
+async function addLogAt(type, ml, iso){
+  await api("logs", {
+    method: "POST",
+    headers: { "Prefer": "return=representation" },
+    body: JSON.stringify({ family_code: familyCode, type: type, ml: ml, created_at: iso })
   });
   await fetchLogs();
 }
@@ -395,6 +448,90 @@ setInterval(() => {
   if ($("main-screen").classList.contains("active")) renderLastLabels();
 }, 30000);
 
+
+/* ---------- あとから追加 ---------- */
+let laterType = null;
+let laterMl = undefined; // undefined=未選択, null=量なし, 数値=ml
+function buildLaterPanel(){
+  const grid = $("later-types");
+  grid.innerHTML = "";
+  for (const t of TYPES){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "type-chip";
+    b.dataset.type = t.key;
+    b.textContent = t.icon + " " + t.label;
+    b.addEventListener("click", () => selectLaterType(t.key));
+    grid.appendChild(b);
+  }
+  const mlGrid = $("later-ml-grid");
+  mlGrid.innerHTML = "";
+  for (const ml of ML_PRESETS){
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "ml-btn";
+    b.textContent = ml + "ml";
+    b.addEventListener("click", () => { laterMl = ml; $("later-ml-input").value = ""; markLaterMl(); });
+    mlGrid.appendChild(b);
+  }
+}
+function markLaterMl(){
+  document.querySelectorAll("#later-ml-grid .ml-btn").forEach(b => {
+    b.style.borderColor = (laterMl === parseInt(b.textContent, 10)) ? "var(--accent)" : "";
+    b.style.color = (laterMl === parseInt(b.textContent, 10)) ? "var(--accent)" : "";
+  });
+}
+function selectLaterType(key){
+  laterType = key;
+  document.querySelectorAll("#later-types .type-chip").forEach(b => {
+    b.classList.toggle("sel", b.dataset.type === key);
+  });
+  $("later-ml").classList.toggle("open", key === "milk");
+}
+function localInputValue(d){
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate())
+    + "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function openLaterPanel(){
+  closeMilkPanel();
+  laterType = null; laterMl = undefined;
+  document.querySelectorAll("#later-types .type-chip").forEach(b => b.classList.remove("sel"));
+  $("later-ml").classList.remove("open");
+  $("later-ml-input").value = "";
+  markLaterMl();
+  $("later-time").value = localInputValue(new Date());
+  $("later-panel").classList.add("open");
+  $("later-panel").scrollIntoView({ behavior:"smooth", block:"nearest" });
+}
+function closeLaterPanel(){ $("later-panel").classList.remove("open"); }
+$("later-open").addEventListener("click", openLaterPanel);
+$("later-cancel").addEventListener("click", closeLaterPanel);
+$("later-ml-none").addEventListener("click", () => { laterMl = null; $("later-ml-input").value = ""; markLaterMl(); setStatus("ミルクの量は「なし」で追加します"); });
+$("later-save").addEventListener("click", async () => {
+  if (!laterType){ setStatus("種類を選んでください。", true); return; }
+  const v = $("later-time").value;
+  if (!v){ setStatus("時間を入れてください。", true); return; }
+  const when = new Date(v);
+  if (isNaN(when.getTime())){ setStatus("時間の形式が正しくありません。", true); return; }
+  if (when.getTime() > Date.now() + 60000){ setStatus("未来の時間は選べません。", true); return; }
+  let ml = null;
+  if (laterType === "milk"){
+    const custom = parseInt($("later-ml-input").value, 10);
+    if (Number.isFinite(custom)) ml = custom;
+    else if (typeof laterMl === "number") ml = laterMl;
+    else ml = null;
+  }
+  try {
+    await addLogAt(laterType, ml, when.toISOString());
+    closeLaterPanel();
+    const t = TYPE_MAP[laterType];
+    setStatus("追加しました（" + (when.getMonth()+1) + "/" + when.getDate() + " " + timeHM(when) + " " + t.label + "）");
+  } catch(e){
+    setStatus("追加できませんでした。通信を確認してもう一度押してください。", true);
+  }
+});
+
 /* ---------- 起動 ---------- */
 function startMain(){
   $("code-view").textContent = familyCode;
@@ -402,6 +539,7 @@ function startMain(){
   fetchLogs().catch(() => setStatus("読み込めませんでした。通信を確認して、開き直してください。", true));
 }
 buildButtons();
+buildLaterPanel();
 if (!configured){
   show("setup-screen");
 } else if (!familyCode){
